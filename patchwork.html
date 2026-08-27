@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Patchwork — Community Repair Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Work+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blueprint: #122142;
+    --blueprint-deep: #0c1830;
+    --grid-line: rgba(120,170,220,0.16);
+    --grid-line-strong: rgba(150,195,235,0.32);
+    --paper: #f4efe3;
+    --paper-shadow: rgba(20,20,10,0.28);
+    --ink: #1c2130;
+    --ink-soft: #565f74;
+    --orange: #e35d1f;
+    --orange-deep: #b8480f;
+    --amber: #d69a2d;
+    --teal: #1f8a94;
+    --green: #2f7d5b;
+    --line: #cdc3ab;
+    --panel-bg: #ece5d4;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    background:var(--panel-bg);
+    color:var(--ink);
+    font-family:'Work Sans', sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3, .display{ font-family:'Oswald', sans-serif; text-transform:uppercase; letter-spacing:0.03em; }
+  .mono{ font-family:'JetBrains Mono', monospace; }
+
+  /* ===== HEADER ===== */
+  header{
+    background:var(--blueprint-deep);
+    color:#eef2fa;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:14px 24px;
+    border-bottom:3px solid var(--orange);
+    gap:20px;
+    flex-wrap:wrap;
+  }
+  .brand{ display:flex; align-items:baseline; gap:12px; }
+  .brand .mark{
+    width:34px;height:34px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #4b638f, #14213d 70%);
+    border:3px solid var(--orange);
+    position:relative; flex:0 0 auto;
+  }
+  .brand .mark::after{
+    content:''; position:absolute; inset:6px; border-radius:50%;
+    border:1.5px dashed rgba(255,255,255,0.5);
+  }
+  .brand h1{ font-size:22px; margin:0; font-weight:700; color:#fff; }
+  .brand span.tag{ font-family:'Work Sans',sans-serif; text-transform:none; letter-spacing:0; font-size:12.5px; color:#9fb3d6; display:block; margin-top:1px; }
+
+  .mode-toggle{
+    display:flex; align-items:center; background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.18); border-radius:999px; padding:3px;
+    font-family:'Oswald',sans-serif; font-size:12.5px; letter-spacing:0.06em;
+  }
+  .mode-toggle button{
+    border:none; background:transparent; color:#b7c3dc; padding:8px 16px;
+    border-radius:999px; cursor:pointer; font:inherit; text-transform:uppercase;
+    transition:all .2s ease;
+  }
+  .mode-toggle button.active{ background:var(--orange); color:#fff; }
+
+  .stat-readout{
+    display:flex; gap:14px; font-family:'JetBrains Mono',monospace; font-size:12px;
+  }
+  .stat-readout .stat{ text-align:center; }
+  .stat-readout .num{ font-size:19px; font-weight:700; display:block; }
+  .stat-readout .lab{ color:#8fa0c2; letter-spacing:0.04em; }
+  .stat-readout .num.amber{ color:var(--amber); }
+  .stat-readout .num.teal{ color:#5fd6e0; }
+  .stat-readout .num.green{ color:#7fd6a8; }
+
+  /* ===== LAYOUT ===== */
+  .app{
+    display:grid;
+    grid-template-columns: 1fr 380px;
+    gap:18px;
+    padding:18px 24px 28px;
+    max-width:1400px; margin:0 auto;
+    align-items:start;
+  }
+  @media (max-width: 920px){
+    .app{ grid-template-columns:1fr; }
+  }
+
+  /* ===== MAP ===== */
+  .map-wrap{
+    background:var(--blueprint);
+    border-radius:6px;
+    border:1px solid #22345c;
+    box-shadow: 0 10px 30px rgba(10,15,30,0.35), inset 0 0 60px rgba(0,0,0,0.25);
+    overflow:hidden;
+    position:relative;
+  }
+  .map-toolbar{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 14px; border-bottom:1px solid rgba(150,195,235,0.18);
+    color:#a9bede; font-size:12.5px;
+  }
+  .map-toolbar .hint{ font-family:'JetBrains Mono',monospace; }
+  .map-toolbar .legend{ display:flex; gap:14px; font-family:'Work Sans',sans-serif; }
+  .legend .dot{ width:9px;height:9px;border-radius:50%; display:inline-block; margin-right:5px; }
+  .map-canvas{
+    position:relative;
+    width:100%;
+    aspect-ratio: 4 / 3;
+    cursor:crosshair;
+  }
+  .map-canvas svg{ width:100%; height:100%; display:block; }
+  .map-canvas.worker-mode{ cursor:default; }
+  .street-label{
+    fill:#7f95c2; font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.05em;
+  }
+  .block-fill{ fill: rgba(160,190,230,0.03); }
+
+  .pin{
+    position:absolute; width:26px; height:26px; margin-left:-13px; margin-top:-13px;
+    border-radius:50%; border:3px solid rgba(0,0,0,0.35);
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; cursor:pointer; color:#fff;
+    box-shadow:0 3px 8px rgba(0,0,0,0.4);
+    transition:transform .15s ease;
+  }
+  .pin:hover{ transform:scale(1.18); }
+  .pin.reported{ background:radial-gradient(circle at 35% 30%, #ecb95a, var(--amber)); }
+  .pin.progress{ background:radial-gradient(circle at 35% 30%, #4fc4cd, var(--teal)); }
+  .pin.resolved{ background:radial-gradient(circle at 35% 30%, #5cbf8f, var(--green)); }
+  .pin.selected{ outline:2px solid #fff; outline-offset:2px; }
+  .pin.ripple::before{
+    content:''; position:absolute; inset:-8px; border-radius:50%;
+    border:2px solid #fff; opacity:0; animation:ripple 0.7s ease-out;
+  }
+  @keyframes ripple{ from{ transform:scale(0.4); opacity:0.9;} to{ transform:scale(1.9); opacity:0; } }
+
+  .map-empty-note{
+    position:absolute; left:14px; bottom:12px; color:#7f95c2;
+    font-family:'JetBrains Mono',monospace; font-size:11px; max-width:60%;
+    background:rgba(12,24,48,0.6); padding:6px 10px; border-radius:4px;
+    border:1px solid rgba(150,195,235,0.2);
+  }
+
+  /* ===== SIDEBAR ===== */
+  .sidebar{ display:flex; flex-direction:column; gap:12px; }
+  .filter-tabs{ display:flex; gap:6px; flex-wrap:wrap; }
+  .filter-tabs button{
+    font-family:'Oswald',sans-serif; font-size:11.5px; letter-spacing:0.05em; text-transform:uppercase;
+    padding:7px 12px; border-radius:5px 5px 0 0; border:1px solid var(--line); border-bottom:none;
+    background:#ddd4bc; color:var(--ink-soft); cursor:pointer;
+  }
+  .filter-tabs button.active{ background:var(--paper); color:var(--ink); font-weight:600; }
+  .filter-tabs button .count{ font-family:'JetBrains Mono',monospace; margin-left:5px; color:var(--orange-deep); }
+
+  .ticket-list{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:0 6px 6px 6px;
+    padding:12px;
+    display:flex; flex-direction:column; gap:12px;
+    max-height:74vh; overflow-y:auto;
+  }
+  .empty-state{
+    text-align:center; color:var(--ink-soft); padding:30px 10px; font-size:13.5px;
+  }
+
+  .ticket{
+    display:flex;
+    background:#fbf8f1;
+    border:1px solid var(--line);
+    border-radius:4px;
+    box-shadow: 2px 3px 0 var(--paper-shadow);
+    overflow:hidden;
+    animation:dropin .3s ease;
+  }
+  @keyframes dropin{ from{ opacity:0; transform:translateY(-6px);} to{opacity:1; transform:none;} }
+  .ticket .stub{
+    flex:0 0 30px;
+    background:#e7dfc9;
+    border-right:2px dashed #b9ae90;
+    display:flex; align-items:center; justify-content:center;
+    writing-mode:vertical-rl; text-orientation:mixed;
+    font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:0.05em;
+    color:var(--ink-soft); padding:6px 0;
+  }
+  .ticket .main{ flex:1; padding:10px 12px; position:relative; cursor:pointer; }
+  .ticket-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .ticket-type{ display:flex; align-items:center; gap:7px; font-weight:600; font-size:13.5px; }
+  .ticket-type .icon{ font-size:15px; }
+  .stamp{
+    font-family:'Oswald',sans-serif; font-size:9.5px; letter-spacing:0.08em;
+    border:2px solid; border-radius:3px; padding:2px 6px; transform:rotate(-7deg);
+    mix-blend-mode:multiply; white-space:nowrap; font-weight:700;
+  }
+  .stamp.reported{ color:var(--amber); border-color:var(--amber); }
+  .stamp.progress{ color:var(--teal); border-color:var(--teal); }
+  .stamp.resolved{ color:var(--green); border-color:var(--green); }
+
+  .ticket-addr{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--ink-soft); margin-top:4px; }
+  .ticket-desc{ font-size:12.5px; color:#3a3f4d; margin-top:6px; line-height:1.4; }
+  .ticket-desc.clamped{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .ticket-foot{ display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:10.5px; color:var(--ink-soft); font-family:'JetBrains Mono',monospace;}
+  .urgency-dot{ width:7px;height:7px;border-radius:50%; display:inline-block; margin-right:5px; vertical-align:middle;}
+  .urgency-high{ background:var(--orange); }
+  .urgency-med{ background:var(--amber); }
+  .urgency-low{ background:#9aa5bd; }
+
+  .ticket-expand{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); }
+  .timeline{ display:flex; gap:0; margin:10px 0 14px; }
+  .tl-step{ flex:1; text-align:center; position:relative; }
+  .tl-step .dot{ width:12px;height:12px;border-radius:50%; background:#d7cfba; border:2px solid #b9ae90; margin:0 auto 5px; }
+  .tl-step.done .dot{ background:var(--green); border-color:var(--green); }
+  .tl-step.current .dot{ background:var(--orange); border-color:var(--orange-deep); }
+  .tl-step::before{ content:''; position:absolute; top:5px; left:-50%; width:100%; height:2px; background:#d7cfba; z-index:-1; }
+  .tl-step:first-child::before{ display:none; }
+  .tl-step.done::before, .tl-step.current::before{ background:var(--green); }
+  .tl-label{ font-size:9.5px; font-family:'JetBrains Mono',monospace; color:var(--ink-soft); text-transform:uppercase; }
+
+  .worker-actions{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .btn{
+    font-family:'Oswald',sans-serif; font-size:11.5px; letter-spacing:0.05em; text-transform:uppercase;
+    border:none; border-radius:4px; padding:8px 13px; cursor:pointer; font-weight:600;
+  }
+  .btn-primary{ background:var(--orange); color:#fff; }
+  .btn-primary:hover{ background:var(--orange-deep); }
+  .btn-outline{ background:transparent; border:1.5px solid var(--ink-soft); color:var(--ink); }
+  select.crew{
+    font-family:'Work Sans',sans-serif; font-size:12px; padding:7px 9px; border-radius:4px; border:1px solid var(--line);
+    background:#fff;
+  }
+
+  /* ===== MODAL ===== */
+  .overlay{
+    position:fixed; inset:0; background:rgba(10,15,30,0.55);
+    display:flex; align-items:center; justify-content:center; padding:20px; z-index:50;
+    opacity:0; pointer-events:none; transition:opacity .18s ease;
+  }
+  .overlay.open{ opacity:1; pointer-events:auto; }
+  .modal{
+    background:var(--paper); border-radius:6px; width:100%; max-width:420px;
+    box-shadow:0 20px 50px rgba(0,0,0,0.4); border:1px solid var(--line);
+    padding:22px; transform:translateY(10px); transition:transform .18s ease;
+  }
+  .overlay.open .modal{ transform:translateY(0); }
+  .modal h2{ font-size:18px; margin:0 0 3px; }
+  .modal .sub{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--ink-soft); margin-bottom:16px; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:11.5px; font-weight:600; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); }
+  .type-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+  .type-grid button{
+    border:1.5px solid var(--line); background:#fff; border-radius:5px; padding:9px 4px;
+    font-size:10.5px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;
+    color:var(--ink-soft); font-family:'Work Sans',sans-serif;
+  }
+  .type-grid button .icon{ font-size:18px; }
+  .type-grid button.selected{ border-color:var(--orange); color:var(--orange-deep); background:#fff3ea; }
+  textarea, .field input[type=text]{
+    width:100%; font-family:'Work Sans',sans-serif; font-size:13px; padding:9px 10px;
+    border-radius:5px; border:1px solid var(--line); resize:vertical;
+  }
+  .urgency-row{ display:flex; gap:8px; }
+  .urgency-row button{
+    flex:1; border:1.5px solid var(--line); background:#fff; padding:8px; border-radius:5px; cursor:pointer;
+    font-size:11.5px; font-family:'Oswald',sans-serif; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft);
+  }
+  .urgency-row button.selected.low{ border-color:#9aa5bd; color:#5c6479; background:#eef0f5; }
+  .urgency-row button.selected.med{ border-color:var(--amber); color:#8a651c; background:#fbf1de; }
+  .urgency-row button.selected.high{ border-color:var(--orange); color:var(--orange-deep); background:#fff0e7; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+  .btn-ghost{ background:transparent; border:none; color:var(--ink-soft); font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:11.5px; cursor:pointer; letter-spacing:0.05em; }
+
+  .toast{
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--blueprint-deep); color:#eef2fa; padding:12px 20px; border-radius:6px;
+    border-left:4px solid var(--orange); font-size:13px; opacity:0; transition:all .25s ease; z-index:60;
+    box-shadow:0 10px 25px rgba(0,0,0,0.3);
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  ::-webkit-scrollbar{ width:9px; }
+  ::-webkit-scrollbar-thumb{ background:#c9bd9c; border-radius:5px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="mark"></div>
+    <div>
+      <h1>Patchwork</h1>
+      <span class="tag">Community Repair Map</span>
+    </div>
+  </div>
+
+  <div class="mode-toggle">
+    <button id="modeCitizen" class="active">Citizen</button>
+    <button id="modeWorker">City Crew</button>
+  </div>
+
+  <div class="stat-readout">
+    <div class="stat"><span class="num amber" id="statReported">0</span><span class="lab">Reported</span></div>
+    <div class="stat"><span class="num teal" id="statProgress">0</span><span class="lab">In Progress</span></div>
+    <div class="stat"><span class="num green" id="statResolved">0</span><span class="lab">Resolved</span></div>
+  </div>
+</header>
+
+<div class="app">
+
+  <!-- MAP -->
+  <div class="map-wrap">
+    <div class="map-toolbar">
+      <span class="hint" id="mapHint">▸ Click the map to report an issue at that location</span>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--amber)"></span>Reported</span>
+        <span><span class="dot" style="background:var(--teal)"></span>In progress</span>
+        <span><span class="dot" style="background:var(--green)"></span>Resolved</span>
+      </div>
+    </div>
+    <div class="map-canvas" id="mapCanvas">
+      <svg viewBox="0 0 800 600" preserveAspectRatio="none" id="mapSvg">
+        <rect x="0" y="0" width="800" height="600" class="block-fill"/>
+      </svg>
+      <div id="pinLayer"></div>
+      <div class="map-empty-note">Prototype map — a stylized city grid stands in for real geodata. Pins are positioned by click coordinates.</div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="filter-tabs" id="filterTabs">
+      <button data-filter="all" class="active">All <span class="count" id="cAll">0</span></button>
+      <button data-filter="reported">Reported <span class="count" id="cReported">0</span></button>
+      <button data-filter="progress">In Progress <span class="count" id="cProgress">0</span></button>
+      <button data-filter="resolved">Resolved <span class="count" id="cResolved">0</span></button>
+    </div>
+    <div class="ticket-list" id="ticketList"></div>
+  </div>
+
+</div>
+
+<!-- REPORT MODAL -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2>File a report</h2>
+    <div class="sub mono" id="modalCoords">LOC — — , — —</div>
+
+    <div class="field">
+      <label>What's the issue?</label>
+      <div class="type-grid" id="typeGrid">
+        <button data-type="pothole" data-icon="🕳️"><span class="icon">🕳️</span>Pothole</button>
+        <button data-type="light" data-icon="💡"><span class="icon">💡</span>Streetlight</button>
+        <button data-type="sidewalk" data-icon="🧱"><span class="icon">🧱</span>Sidewalk</button>
+        <button data-type="other" data-icon="⚠️"><span class="icon">⚠️</span>Other</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Street / cross street</label>
+      <input type="text" id="fieldStreet" placeholder="e.g. 5th Ave & Elm St">
+    </div>
+
+    <div class="field">
+      <label>Describe what you see</label>
+      <textarea id="fieldDesc" rows="3" placeholder="e.g. Deep pothole in the right lane, roughly 1 ft wide."></textarea>
+    </div>
+
+    <div class="field">
+      <label>Urgency</label>
+      <div class="urgency-row" id="urgencyRow">
+        <button data-level="low">Low</button>
+        <button data-level="med">Medium</button>
+        <button data-level="high">High</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-ghost" id="cancelReport">Cancel</button>
+      <button class="btn btn-primary" id="submitReport">File Report</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const TYPE_ICON = { pothole:'🕳️', light:'💡', sidewalk:'🧱', other:'⚠️' };
+  const TYPE_LABEL = { pothole:'Pothole', light:'Streetlight', sidewalk:'Sidewalk', other:'Other' };
+  const CREWS = ['Unassigned','Crew A — Roads','Crew B — Electrical','Crew C — Sidewalks'];
+  const STATUS_LABEL = { reported:'Reported', progress:'In Progress', resolved:'Resolved' };
+
+  let mode = 'citizen';
+  let filter = 'all';
+  let expandedId = null;
+  let pendingClick = null; // {x,y} percent for new report
+  let selectedType = null;
+  let selectedUrgency = null;
+  let nextId = 7;
+
+  let tickets = [
+    {id:1, type:'pothole', x:22, y:38, street:'5th Ave & Elm St', desc:'Large pothole in the right lane, causing cars to swerve into bike lane.', urgency:'high', status:'progress', crew:'Crew A — Roads', reported:'Aug 12'},
+    {id:2, type:'light', x:61, y:20, street:'Harbor Rd, near Pier 3', desc:'Streetlight has been out for a week, very dark at night.', urgency:'med', status:'reported', crew:'Unassigned', reported:'Aug 20'},
+    {id:3, type:'sidewalk', x:44, y:63, street:'Maple St & 2nd Ave', desc:'Cracked sidewalk slab, tripping hazard for pedestrians.', urgency:'med', status:'resolved', crew:'Crew C — Sidewalks', reported:'Jul 30'},
+    {id:4, type:'pothole', x:76, y:47, street:'Union Blvd', desc:'Cluster of small potholes near the intersection.', urgency:'low', status:'reported', crew:'Unassigned', reported:'Aug 23'},
+    {id:5, type:'light', x:33, y:78, street:'Oak St', desc:'Flickering streetlight, may need ballast replacement.', urgency:'low', status:'progress', crew:'Crew B — Electrical', reported:'Aug 15'},
+    {id:6, type:'other', x:85, y:70, street:'Riverside Dr', desc:'Fallen tree branch partially blocking the sidewalk.', urgency:'high', status:'reported', crew:'Unassigned', reported:'Aug 25'},
+  ];
+
+  const el = id => document.getElementById(id);
+  const pinLayer = el('pinLayer');
+  const ticketList = el('ticketList');
+  const overlay = el('overlay');
+  const toastEl = el('toast');
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    setTimeout(()=>toastEl.classList.remove('show'), 2400);
+  }
+
+  function buildMapGrid(){
+    const svg = el('mapSvg');
+    let s = '<rect x="0" y="0" width="800" height="600" class="block-fill"/>';
+    for(let x=0;x<=800;x+=40){
+      s += `<line x1="${x}" y1="0" x2="${x}" y2="600" stroke="var(--grid-line)" stroke-width="${x%160===0?1.4:0.6}"/>`;
+    }
+    for(let y=0;y<=600;y+=40){
+      s += `<line x1="0" y1="${y}" x2="800" y2="${y}" stroke="var(--grid-line)" stroke-width="${y%120===0?1.4:0.6}"/>`;
+    }
+    const avenues = [
+      {x1:0,y1:120,x2:800,y2:120,label:'HARBOR RD'},
+      {x1:0,y1:360,x2:800,y2:360,label:'MAPLE ST'},
+      {x1:160,y1:0,x2:160,y2:600,label:'5TH AVE'},
+      {x1:520,y1:0,x2:520,y2:600,label:'UNION BLVD'},
+    ];
+    avenues.forEach(a=>{
+      s += `<line x1="${a.x1}" y1="${a.y1}" x2="${a.x2}" y2="${a.y2}" stroke="var(--grid-line-strong)" stroke-width="2"/>`;
+      s += `<text x="${a.x1+10}" y="${a.y1+14}" class="street-label">${a.label}</text>`;
+    });
+    svg.innerHTML = s;
+  }
+
+  function renderStats(){
+    const r = tickets.filter(t=>t.status==='reported').length;
+    const p = tickets.filter(t=>t.status==='progress').length;
+    const done = tickets.filter(t=>t.status==='resolved').length;
+    el('statReported').textContent = r;
+    el('statProgress').textContent = p;
+    el('statResolved').textContent = done;
+    el('cAll').textContent = tickets.length;
+    el('cReported').textContent = r;
+    el('cProgress').textContent = p;
+    el('cResolved').textContent = done;
+  }
+
+  function renderPins(){
+    pinLayer.innerHTML = '';
+    tickets.forEach(t=>{
+      const pin = document.createElement('div');
+      pin.className = `pin ${t.status}` + (t.id===expandedId?' selected':'');
+      pin.style.left = t.x+'%';
+      pin.style.top = t.y+'%';
+      pin.textContent = TYPE_ICON[t.type];
+      pin.title = `${TYPE_LABEL[t.type]} — ${t.street}`;
+      pin.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        expandedId = (expandedId===t.id) ? null : t.id;
+        renderTickets();
+        renderPins();
+        document.querySelector(`.ticket[data-id="${t.id}"]`)?.scrollIntoView({behavior:'smooth', block:'nearest'});
+      });
+      pinLayer.appendChild(pin);
+    });
+  }
+
+  function timelineSteps(status){
+    const order = ['reported','progress','resolved'];
+    const idx = order.indexOf(status);
+    return order.map((s,i)=>({
+      key:s,
+      state: i<idx ? 'done' : (i===idx ? 'current' : '')
+    }));
+  }
+
+  function renderTickets(){
+    const filtered = tickets.filter(t=> filter==='all' ? true : t.status===filter);
+    ticketList.innerHTML = '';
+    if(filtered.length===0){
+      ticketList.innerHTML = `<div class="empty-state">No tickets here yet.<br>${mode==='citizen' ? 'Click the map to file the first report.' : 'Nothing needs your crew right now.'}</div>`;
+      return;
+    }
+    filtered.forEach(t=>{
+      const wrap = document.createElement('div');
+      wrap.className = 'ticket';
+      wrap.dataset.id = t.id;
+      const expanded = expandedId===t.id;
+
+      let actionHtml = '';
+      if(mode==='worker'){
+        let advanceBtn = '';
+        if(t.status==='reported') advanceBtn = `<button class="btn btn-primary" data-action="advance" data-id="${t.id}">Start Work</button>`;
+        else if(t.status==='progress') advanceBtn = `<button class="btn btn-primary" data-action="advance" data-id="${t.id}">Mark Resolved</button>`;
+        else advanceBtn = `<button class="btn btn-outline" data-action="reopen" data-id="${t.id}">Reopen</button>`;
+
+        actionHtml = `<div class="worker-actions">
+          ${advanceBtn}
+          <select class="crew" data-action="crew" data-id="${t.id}">
+            ${CREWS.map(c=>`<option ${c===t.crew?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>`;
+      }
+
+      const expandHtml = expanded ? `
+        <div class="ticket-expand">
+          <div class="timeline">
+            ${timelineSteps(t.status).map(s=>`
+              <div class="tl-step ${s.state}">
+                <div class="dot"></div>
+                <div class="tl-label">${STATUS_LABEL[s.key]}</div>
+              </div>`).join('')}
+          </div>
+          ${actionHtml}
+        </div>` : '';
+
+      wrap.innerHTML = `
+        <div class="stub mono">#${String(t.id).padStart(4,'0')}</div>
+        <div class="main" data-id="${t.id}">
+          <div class="ticket-top">
+            <div class="ticket-type"><span class="icon">${TYPE_ICON[t.type]}</span>${TYPE_LABEL[t.type]}</div>
+            <div class="stamp ${t.status}">${STATUS_LABEL[t.status]}</div>
+          </div>
+          <div class="ticket-addr">${t.street}</div>
+          <div class="ticket-desc ${expanded?'':'clamped'}">${t.desc}</div>
+          <div class="ticket-foot">
+            <span><span class="urgency-dot urgency-${t.urgency}"></span>${t.urgency.toUpperCase()} urgency</span>
+            <span>${t.reported}</span>
+          </div>
+          ${expandHtml}
+        </div>
+      `;
+      ticketList.appendChild(wrap);
+    });
+  }
+
+  ticketList.addEventListener('click', (e)=>{
+    const actionEl = e.target.closest('[data-action]');
+    if(actionEl){
+      const id = parseInt(actionEl.dataset.id);
+      const t = tickets.find(x=>x.id===id);
+      const action = actionEl.dataset.action;
+      if(action==='advance'){
+        if(t.status==='reported'){ t.status='progress'; toast(`Ticket #${String(id).padStart(4,'0')} moved to In Progress`); }
+        else if(t.status==='progress'){ t.status='resolved'; toast(`Ticket #${String(id).padStart(4,'0')} marked Resolved ✓`); }
+      } else if(action==='reopen'){
+        t.status='progress'; toast(`Ticket #${String(id).padStart(4,'0')} reopened`);
+      } else if(action==='crew'){
+        t.crew = actionEl.value;
+        toast(`Assigned to ${actionEl.value}`);
+      }
+      renderStats(); renderTickets(); renderPins();
+      return;
+    }
+    const main = e.target.closest('.main');
+    if(main){
+      const id = parseInt(main.dataset.id);
+      expandedId = expandedId===id ? null : id;
+      renderTickets(); renderPins();
+    }
+  });
+
+  el('filterTabs').addEventListener('click', (e)=>{
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    filter = btn.dataset.filter;
+    document.querySelectorAll('#filterTabs button').forEach(b=>b.classList.toggle('active', b===btn));
+    renderTickets();
+  });
+
+  function setMode(m){
+    mode = m;
+    el('modeCitizen').classList.toggle('active', m==='citizen');
+    el('modeWorker').classList.toggle('active', m==='worker');
+    el('mapCanvas').classList.toggle('worker-mode', m==='worker');
+    el('mapHint').textContent = m==='citizen'
+      ? '▸ Click the map to report an issue at that location'
+      : '▸ Click a pin to review, assign a crew, and update status';
+    expandedId = null;
+    renderTickets();
+    renderPins();
+  }
+  el('modeCitizen').addEventListener('click', ()=>setMode('citizen'));
+  el('modeWorker').addEventListener('click', ()=>setMode('worker'));
+
+  // Map click -> new report (citizen mode only)
+  el('mapCanvas').addEventListener('click', (e)=>{
+    if(mode!=='citizen') return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left)/rect.width)*100;
+    const y = ((e.clientY - rect.top)/rect.height)*100;
+    pendingClick = {x,y};
+    openModal(x,y);
+  });
+
+  function openModal(x,y){
+    selectedType = null; selectedUrgency = null;
+    el('fieldStreet').value = '';
+    el('fieldDesc').value = '';
+    document.querySelectorAll('#typeGrid button').forEach(b=>b.classList.remove('selected'));
+    document.querySelectorAll('#urgencyRow button').forEach(b=>b.classList.remove('selected','low','med','high'));
+    el('modalCoords').textContent = `LOC ${x.toFixed(1)}%X , ${y.toFixed(1)}%Y — nearest block auto-detected`;
+    overlay.classList.add('open');
+  }
+  function closeModal(){ overlay.classList.remove('open'); }
+  el('cancelReport').addEventListener('click', closeModal);
+  overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
+
+  el('typeGrid').addEventListener('click', (e)=>{
+    const b = e.target.closest('button'); if(!b) return;
+    selectedType = b.dataset.type;
+    document.querySelectorAll('#typeGrid button').forEach(x=>x.classList.toggle('selected', x===b));
+  });
+  el('urgencyRow').addEventListener('click', (e)=>{
+    const b = e.target.closest('button'); if(!b) return;
+    selectedUrgency = b.dataset.level;
+    document.querySelectorAll('#urgencyRow button').forEach(x=>x.classList.remove('selected','low','med','high'));
+    b.classList.add('selected', selectedUrgency);
+  });
+
+  el('submitReport').addEventListener('click', ()=>{
+    if(!selectedType){ toast('Pick an issue type first'); return; }
+    if(!el('fieldDesc').value.trim()){ toast('Add a short description'); return; }
+    if(!selectedUrgency){ toast('Choose an urgency level'); return; }
+    const t = {
+      id: nextId++,
+      type: selectedType,
+      x: pendingClick.x, y: pendingClick.y,
+      street: el('fieldStreet').value.trim() || 'Unnamed location',
+      desc: el('fieldDesc').value.trim(),
+      urgency: selectedUrgency,
+      status: 'reported',
+      crew: 'Unassigned',
+      reported: 'Just now'
+    };
+    tickets.unshift(t);
+    closeModal();
+    renderStats(); renderTickets(); renderPins();
+    // ripple animation on the freshly placed pin
+    requestAnimationFrame(()=>{
+      const pins = pinLayer.querySelectorAll('.pin');
+      const last = [...pins].find(p => p.style.left === t.x+'%' && p.style.top === t.y+'%');
+      if(last){ last.classList.add('ripple'); setTimeout(()=>last.classList.remove('ripple'),700); }
+    });
+    toast(`Report filed — Ticket #${String(t.id).padStart(4,'0')}`);
+  });
+
+  // init
+  buildMapGrid();
+  renderStats();
+  renderTickets();
+  renderPins();
+})();
+</script>
+</body>
+</html>
